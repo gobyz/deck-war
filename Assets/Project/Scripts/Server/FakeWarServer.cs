@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -9,15 +10,6 @@ using UnityEngine;
 public class FakeWarServer
 { 
     [SerializeField] private GameConfig gameConfig;
-    private enum GameState
-    {
-        WaitingForPlayers,
-        Ready,
-        Shuffling,
-        Drawing,
-        Resolving,
-        GameOver
-    }
 
     private GameState state;
 
@@ -27,23 +19,29 @@ public class FakeWarServer
 
     private CancellationTokenSource cts = new();
 
+    public static event Action<GameState> OnGameStateChanged;
+
+
     public async UniTask<JoinResponse> Join(JoinRequest joinRequest, Client client = null)
     {
         await UniTask.Delay(500); // simulate server latency
 
         if(players.Count < gameConfig.MaxPlayers)
         {
-            Debug.Log("Player " + joinRequest.ClientId + " joined the game.");
-
             Player player = new Player(joinRequest.ClientId);
 
             players.Add(player);
 
             player.State = PlayerState.Ready;
 
-            player.PlayerID = players.IndexOf(player);
+            player.PlayerID = players.Count - 1; // assign player ID based on order of joining, in a real server this would be more robust
 
-            this.client = client;
+            if (client != null)
+            {
+                 this.client = client;
+            }
+           
+            Debug.Log("Player " + joinRequest.ClientId + " joined the game. PlayerId assigned: " + player.PlayerID);
 
             return new JoinResponse
             {
@@ -123,21 +121,25 @@ public class FakeWarServer
     private async UniTask Run(CancellationToken token)
     {
         // click join
-  
-        state = GameState.WaitingForPlayers;
+
+        Debug.Log("Server started. Waiting for players to join...");
+
+        SetState(GameState.WaitingForPlayers);
 
         Join(new JoinRequest { ClientId = 46523 }).Forget(); // simulate fake player joining, in a real server this would be triggered by a client connecting and sending a join request
         
         await CheckAllPlayersReady();
         //click ready
 
-        state = GameState.Ready;
+        Debug.Log("All players ready. Starting game...");
+
+        SetState(GameState.Ready);
 
         await UniTask.Delay(1000);
 
         InitializePlayerDecks();
 
-        state = GameState.Shuffling;
+        SetState(GameState.Shuffling);
         
         await UniTask.Delay(1000); //shuffling
 
@@ -148,19 +150,42 @@ public class FakeWarServer
     {
         while(state != GameState.GameOver)
         {
-            state = GameState.Drawing;
+            Debug.Log("Starting round...");
+
+            SetPlayersState(PlayerState.WaitingToDraw);
+
+            SetState(GameState.Drawing);
+
+            FakePlayerDraw().Forget(); // simulate fake player drawing, in a real server this would be triggered by a client sending a draw request
+
+            Debug.Log("Waiting for players to draw...");
 
             await CheckAllPlayersDrawn();
+
+            Debug.Log("All players drawn. Resolving round...");
+
+            SetState(GameState.Resolving);
 
             await UniTask.Delay(500); // resolving
 
             ResolveResponse resolveResponse = await Resolve();
 
+            Debug.Log("Round resolved. Sending response...");
+
             SendResolveResponse(resolveResponse);
         }
     }
 
-   
+    private async UniTaskVoid FakePlayerDraw()
+    {
+        await UniTask.Delay(UnityEngine.Random.Range(300, 800));
+
+        DrawResponse drawResponse = await DrawCard(new DrawRequest { PlayerId = 0 });
+
+        Debug.Log("Fake player drew card: " + drawResponse.PlayerCardId);
+        
+        client.OnEnemyDrawn(drawResponse);
+    }
 
     private async UniTask<ResolveResponse> Resolve()
     {
@@ -169,19 +194,21 @@ public class FakeWarServer
         Player player1 = players[0];
         Player player2 = players[1];
 
-        int winner = Resolve(player1.Deck.drawnCard, player2.Deck.drawnCard);
+        int winner = Resolve(player1.Deck.DrawnCard, player2.Deck.DrawnCard);
 
-        if(winner > 0)
+        if(winner >= 0)
         {
             Player winnerPlayer = players[winner]; 
 
-            winnerPlayer.WarDeck.AddCard(player1.Deck.drawnCard);
-            winnerPlayer.WarDeck.AddCard(player2.Deck.drawnCard);
+            winnerPlayer.WarDeck.AddCard(player1.Deck.DrawnCard);
+            winnerPlayer.WarDeck.AddCard(player2.Deck.DrawnCard);
 
             return new ResolveResponse
             {
-                PlayerId = players[winner].PlayerID,
-                isATie = false
+                WinnerId = players[winner].PlayerID,
+                DeckInfos = GetDeckInfos(),
+                isATie = false,
+                
             };
         }
         else
@@ -198,26 +225,77 @@ public class FakeWarServer
         return players.FirstOrDefault(p => p.PlayerID == playerId);
     }
 
+    private List<DeckInfo> GetDeckInfos()
+    {
+        return players.Select(p => new DeckInfo
+        {
+            PlayerId = p.PlayerID,
+            DeckCardsLeft = p.Deck.CardsLeft,
+            WarDeckCardsLeft = p.WarDeck.CardsLeft
+        }).ToList();
+    }
+
     public async UniTask<DrawResponse> DrawCard(DrawRequest drawRequest)
     {
         await UniTask.Delay(500); // simulate server latency
 
         Player player = GetPlayer(drawRequest.PlayerId);
 
+        if(player.State == PlayerState.Drawn)
+        {
+            return new DrawResponse
+            {
+                Status = DrawResponseStatus.AlreadyDrawn
+            };
+        }
+
         CardData card = player.Deck.Draw();
 
         player.State = PlayerState.Drawn;
 
+        Debug.Log("Player " + player.PlayerID + " drew card: " + card.Id);
+
         return new DrawResponse
         {
             PlayerId = drawRequest.PlayerId,
-            PlayerCardId = card.Id
+            PlayerCardId = card.Id,
+            DeckInfo = new DeckInfo
+            {
+                DeckCardsLeft = player.Deck.CardsLeft,
+                WarDeckCardsLeft = player.WarDeck.CardsLeft
+             },
         };
     }
 
     private void SendResolveResponse(ResolveResponse response)
     {
-        client.OnResponseReceived(response);
+        client.ReceiveResolveResponce(response);
+    }
+
+    private void SetPlayersState(PlayerState state)
+    {
+        players.ForEach(p => p.State = state);
+    }
+
+     private void SetState(GameState newState)
+    {
+        if (state == newState)
+            return;
+
+        state = newState;
+
+        OnGameStateChanged?.Invoke(state);
     }
 }
+
+public enum GameState
+    {
+        Undefined,
+        WaitingForPlayers,
+        Ready,
+        Shuffling,
+        Drawing,
+        Resolving,
+        GameOver
+    }
 

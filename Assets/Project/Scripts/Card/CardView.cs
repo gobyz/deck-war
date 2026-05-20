@@ -4,24 +4,24 @@ public class CardView : MonoBehaviour
 {
     [SerializeField] private SpriteRenderer spriteRenderer;
 
-    private Card card;
-    private CardTheme theme;
+    private CardData cardData;
 
-    public void Initialize(Card card, CardTheme theme)
+    public void Initialize(string cardId)
     {
-        this.card = card;
-        this.theme = theme;
+        CardData card = GameConfigProvider.Instance.GameConfig.GetCardById(cardId);
+        this.cardData = card;
 
         ShowFront();
     }
 
     public void ShowFront()
     {
-        spriteRenderer.sprite = card.Data.FrontSprite;
+        spriteRenderer.sprite = cardData.FrontSprite;
     }
+
 
     public void ShowBack()
     {
-        spriteRenderer.sprite = theme.BackSprite;
+        spriteRenderer.sprite = GameConfigProvider.Instance.GameConfig.CardTheme.BackSprite;
     }
 }

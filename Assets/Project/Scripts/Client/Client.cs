@@ -1,14 +1,26 @@
-using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Events;
 
 public class Client : MonoBehaviour
 {
+    public static Client Instance;
     public FakeWarServer server;
     public int clientId;
     private int playerId;
+    public static UnityEvent<string, DeckInfo> OnPlayerCardDrawn = new UnityEvent<string, DeckInfo>();
+    public static UnityEvent<string, DeckInfo> OnEnemyCardDrawn = new UnityEvent<string, DeckInfo>();
+    public static UnityEvent OnPlayerWon = new UnityEvent();
+    public static UnityEvent OnEnemyWon = new UnityEvent();
+    public static UnityEvent OnTie = new UnityEvent();
+    public static UnityEvent<ResolveResponse> OnResolveResponseReceived = new UnityEvent<ResolveResponse>();
+
+    void Awake()
+    {
+        Instance = this;
+    }
 
     private void Start()
-    {
+    {        
         server = new FakeWarServer();
     }
     [ContextMenu("Join Game")]
@@ -16,7 +28,9 @@ public class Client : MonoBehaviour
     {
         JoinRequest joinRequest = new JoinRequest { ClientId = clientId };
 
-        JoinResponse joinResponse = await server.Join(joinRequest);
+        JoinResponse joinResponse = await server.Join(joinRequest, this);
+
+        playerId = joinResponse.PlayerId;
 
         Debug.Log("Join response received. Status: " + joinResponse.Status);
     }
@@ -27,25 +41,41 @@ public class Client : MonoBehaviour
         
         DrawResponse drawResponse = await server.DrawCard(drawRequest);
 
-        Debug.Log("Drew card: " + drawResponse.PlayerCardId);  
+        OnPlayerCardDrawn.Invoke(drawResponse.PlayerCardId, drawResponse.DeckInfo); 
+
+        Debug.Log("Drew card: " + drawResponse.PlayerCardId);     
     }
 
-    public void OnResponseReceived(ResolveResponse response)
+
+    public void OnEnemyDrawn(DrawResponse drawResponse)
     {
+        OnEnemyCardDrawn.Invoke(drawResponse.PlayerCardId, drawResponse.DeckInfo); 
+    }
+
+
+    public void ReceiveResolveResponce(ResolveResponse response)
+    {
+        OnResolveResponseReceived.Invoke(response);
+
         if (response.isATie)
         {
-            Debug.Log("It's a tie!");
+            OnTie.Invoke();
         }
         else
         {
-            if(response.PlayerId == playerId)
+            if(response.WinnerId == playerId)
             {
-                Debug.Log("You win!");
+                OnPlayerWon.Invoke();
             }
             else
             {
-                Debug.Log("You lose!");
+                OnEnemyWon.Invoke();
             }
         }        
+    }
+
+    public bool IsLocalPlayer(int playerId)
+    {
+        return this.playerId == playerId;
     }
 }
