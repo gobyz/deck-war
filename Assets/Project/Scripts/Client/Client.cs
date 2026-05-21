@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -46,12 +47,7 @@ public class Client : MonoBehaviour
     {
         DrawRequest drawRequest = new DrawRequest { PlayerId = playerId };
         
-        DrawResponse drawResponse = await server.DrawCard(drawRequest);
-
-        if(drawResponse.Status == DrawResponseStatus.Success)
-        {
-           OnDrawnReceived.Invoke(drawResponse);  
-        }        
+        server.RequestDraw(drawRequest).Forget();
     }
 
     public void ReceiveGameState(GameState state)
@@ -59,9 +55,12 @@ public class Client : MonoBehaviour
         OnGameStateReceived.Invoke(state);
     }
 
-    public void ReceiveEnemyDrawn(DrawResponse drawResponse)
+    public void ReceiveDrawn(DrawResponse drawResponse)
     {
-        OnDrawnReceived.Invoke(drawResponse); 
+        if(drawResponse.Status == DrawResponseStatus.Success)
+        {
+            OnDrawnReceived.Invoke(drawResponse);
+        }  
     }
 
     public void ReceiveResolve(Resolve resolve)

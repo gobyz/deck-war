@@ -29,6 +29,7 @@ public class UIViewController : MonoBehaviour
     [SerializeField] private GameObject winUI;
     [SerializeField] private GameObject winLabel;
     [SerializeField] private GameObject loseLabel;
+    [SerializeField] private GameObject tieLabel;
     
     private void Start()
     {
@@ -142,14 +143,7 @@ public class UIViewController : MonoBehaviour
 
     private void OnGameOver(GameOver gameOver)
     {
-        if (Client.Instance.IsLocalPlayer(gameOver.WinnerId))
-        {
-            ShowWinUI(true, true);
-        }
-        else
-        {
-            ShowWinUI(true, false);
-        }
+        ShowWinUI(true, gameOver.GameOutcome);
     }
 
     private void ShowShuffleUI(bool value)
@@ -200,11 +194,26 @@ public class UIViewController : MonoBehaviour
         drawButton.interactable = false;
     }
 
-    private void ShowWinUI(bool value,bool playerWon = false)
+    private void ShowWinUI(bool value, Outcome gameOutcome = Outcome.Undefined)
     {
+        winLabel.SetActive(false);
+        loseLabel.SetActive(false);
+        tieLabel.SetActive(false);
+
         winUI.SetActive(value);
-        winLabel.SetActive(playerWon);
-        loseLabel.SetActive(!playerWon); 
+
+        switch (gameOutcome)
+        {
+            case Outcome.PlayerWin:
+                winLabel.SetActive(true);
+                break;
+            case Outcome.EnemyWin:
+                 loseLabel.SetActive(true);
+                break;
+            case Outcome.Tie:
+                tieLabel.SetActive(true);
+                break;
+        }
     }
 
     void OnDestroy()

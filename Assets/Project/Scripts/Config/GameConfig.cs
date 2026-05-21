@@ -6,7 +6,7 @@ using UnityEngine;
 public class GameConfig : ScriptableObject
 {
     public readonly int MaxPlayers = 2;
-    public readonly int StartingDeckSize = 26;
+    public readonly int StartingDeckSize = 6;
     public readonly int WarCardsCount = 4;
     [Header("Clients")]
     public int ClientIdPlayer = 35221;
@@ -26,5 +26,4 @@ public class GameConfig : ScriptableObject
     public float ShuffleAnimationStrength = 0.5f;
     public int ShuffleAnimationVibrato = 10;
     public float ShuffleAnimationRandomness = 0.5f;
-
 }

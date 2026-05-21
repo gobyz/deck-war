@@ -10,21 +10,14 @@ using UnityEngine;
 public class Server
 { 
     private GameConfig gameConfig;
-
     private GameState gameState;
-
     private Client client; // only one client because this is a fake server, in a real server this would be a list of clients
-
     private List<Player> players = new List<Player>(); 
-
     private List<CardData> winPile = new List<CardData>();
-
     private bool isWar = false; // flag to indicate if the round is a war, used to determine how many cards to draw in the next round
-
     private int cardsToDraw = 1; // number of cards to draw in the next round
-
-    private int gameWinnerId = -1; // id of the player who won the game
-
+    private Outcome gameOutcome;
+    private bool isGameOver = false;
     private CancellationTokenSource cts = new();
 
     public Server(Client client)
@@ -42,86 +35,140 @@ public class Server
     }
 
     private async UniTask ServerLoop(CancellationToken token)
-    {     
+    {
         ServerClear();
 
-        await UniTask.Delay(1000); // simulate delay
+        await RunLobbyPhase(token);
 
-        Debug.Log("Server started. Waiting for players to join...");
+        await RunGameStartPhase(token);
 
-        SetGameState(GameState.WaitingForPlayers);
+        await RunGameplayPhase(token);
 
-        Join(new JoinRequest { ClientId = gameConfig.ClientIdEnemy }, 0).Forget(); // simulate fake player joining
-        
-        await AreAllPlayersReady();
-
-        Debug.Log("All players ready. Starting game...");
-
-        await UniTask.Delay(1000); // simulate delay
-
-        SetGameState(GameState.Shuffling);
-        
-        await UniTask.Delay(3000); // simulate delay
-
-        SetGameState(GameState.Ready);
-
-        InitializePlayerDecks();
-
-        await Game(token);      
+        await RunGameOverPhase(token);
     }
 
-    private async UniTask Game(CancellationToken token)
-    {
-        while (true)
-        {
-            Debug.Log("Starting round...");        
-
-            Debug.Log("Waiting for players to draw...");
-
-            SetCardsToDraw();
-
-            SetGameState(GameState.Drawing);  
-
-            await Draw();
-
-            token.ThrowIfCancellationRequested();
-
-            Debug.Log("All players drawn. Resolving round...");
-
-            SetGameState(GameState.Resolving);
-
-            await UniTask.Delay(500); // resolving
-
-            Resolve resolve = await Resolve();
-
-            Debug.Log("Round resolved. Sending response...");
-
-            SendResolve(resolve);
-
-            if(players.Any(p => !p.CanDraw()))
-            {
-                gameWinnerId = GetWinnerId(players.Find(p => !p.CanDraw()).PlayerID);
-
-                GameOver().Forget();
-
-                cts.Cancel();
-
-                token.ThrowIfCancellationRequested();
-            }   
-        }
-    }
-
-    private async UniTaskVoid GameOver()
+    private async UniTask GameOver()
     {
         SetGameState(GameState.GameOver);
 
         SendGameOver();
 
-        Debug.Log("Game over.");
+        Debug.Log($"Game over. Game Outcome: {gameOutcome.ToString()}");
 
         await UniTask.Delay(3000);
 
         StartServerLoop(); // restart server loop 
+    }
+
+    private async UniTask RunLobbyPhase(CancellationToken token)
+    {
+        Debug.Log("Starting server...");
+
+        await UniTask.Delay(1000, cancellationToken: token);
+
+        SetGameState(GameState.WaitingForPlayers);
+
+        Debug.Log("Waiting for players to join...");
+
+        // Fake enemy join
+        Join(new JoinRequest{ ClientId = gameConfig.ClientIdEnemy }, 0).Forget();
+
+        await AreAllPlayersReady();
+    }
+
+    private async UniTask RunGameStartPhase(CancellationToken token)
+    {
+        Debug.Log("All players ready.");
+
+        await UniTask.Delay(1000, cancellationToken: token);
+
+        SetGameState(GameState.Shuffling);
+
+        Debug.Log("Shuffling cards...");
+
+        await UniTask.Delay(3000, cancellationToken: token);
+
+        InitializePlayerDecks();
+
+        SetGameState(GameState.Ready);
+
+        Debug.Log("Game ready.");
+    }
+
+     private async UniTask RunGameplayPhase(CancellationToken token)
+    {
+        while (!isGameOver)
+        {
+            await RunRound(token);
+        }
+    }
+
+    private async UniTask RunGameOverPhase(CancellationToken token)
+    {
+        SetGameState(GameState.GameOver);
+
+        await GameOver();
+    }
+
+    private async UniTask RunRound(CancellationToken token)
+    {
+        Debug.Log("Starting new round...");
+
+        await RunDrawPhase(token);
+
+        if (!isGameOver)
+        {
+            await RunResolvePhase(token); 
+
+            EvaluateGameOver();
+        }    
+    }
+
+    private async UniTask RunDrawPhase(CancellationToken token)
+    {
+        Debug.Log("Waiting for players to draw...");
+
+        SetCardsToDraw();
+
+        SetGameState(GameState.Drawing);
+
+        await Draw();
+    }
+
+    private async UniTask RunResolvePhase(CancellationToken token)
+    {
+        Debug.Log("Resolving round...");
+
+        SetGameState(GameState.Resolving);
+
+        await UniTask.Delay(500, cancellationToken: token);
+
+        Resolve resolve = await Resolve();
+
+        SendResolve(resolve);
+
+        Debug.Log("Round resolved.");
+    }
+
+    private void EvaluateGameOver()
+    {
+        if (players.All(p => p.CanDraw()))
+        {
+            return;
+        }
+
+        if (players.All(p => !p.CanDraw()))
+        {
+            gameOutcome = Outcome.Tie;
+        }
+        else
+        {
+            Player winner = players.First(p => p.CanDraw());
+
+            gameOutcome = GetWinnerGameOutcome(winner.PlayerID);
+        }
+
+        isGameOver = true;
     }
 
     private void ServerClear()
@@ -130,7 +177,8 @@ public class Server
         winPile.Clear();
         isWar = false;
         cardsToDraw = 1;
-        gameWinnerId = -1;
+        gameOutcome = Outcome.Undefined;
+        isGameOver = false;
     }
 
     private void SetCardsToDraw()
@@ -181,12 +229,7 @@ public class Server
 
     private async UniTask Draw()
     {
-        for (int i = 0; i < cardsToDraw; i++)
-        {
-            await FakePlayerDraw(); // simulate fake player drawing, in a real server this would be triggered by a client sending a draw request
-        }
-
-        while (!players.All(p => p.DrawnCardsCount == cardsToDraw))
+        while (!isGameOver && !players.All(p => p.DrawnCardsCount == cardsToDraw))
         {
             await UniTask.Yield();
         }
@@ -208,10 +251,39 @@ public class Server
         }
     }
 
-    public async UniTask<DrawResponse> DrawCard(DrawRequest drawRequest)
+    public async UniTaskVoid RequestDraw(DrawRequest drawRequest)
     {
-        await UniTask.Delay(500); // simulate server latency
+        await UniTask.Delay(500);
 
+        DrawResponse enemyDrawResponse = DrawCard(new DrawRequest { PlayerId = 0 });
+
+        DrawResponse playerDrawResponse = DrawCard(drawRequest); 
+
+        if(enemyDrawResponse.Status == DrawResponseStatus.NoCardsLeft || playerDrawResponse.Status == DrawResponseStatus.NoCardsLeft)
+        {
+            if(enemyDrawResponse.Status == DrawResponseStatus.NoCardsLeft && playerDrawResponse.Status == DrawResponseStatus.NoCardsLeft)
+            {
+                gameOutcome = Outcome.Tie;
+            }
+            else if(enemyDrawResponse.Status == DrawResponseStatus.NoCardsLeft)
+            {
+                gameOutcome = Outcome.PlayerWin;
+            }
+            else
+            {
+                gameOutcome = Outcome.EnemyWin;
+            }
+
+            isGameOver = true;
+        }
+
+        client.ReceiveDrawn(enemyDrawResponse); 
+
+        client.ReceiveDrawn(playerDrawResponse);
+    }
+
+    public DrawResponse DrawCard(DrawRequest drawRequest)
+    {
         if(gameState != GameState.Drawing)
         {
             return new DrawResponse
@@ -232,14 +304,8 @@ public class Server
 
         if(!player.CanDraw())
         {
-            Debug.LogError($"Player {player.PlayerID} cannot draw, no cards left in deck or war deck.");
+            Debug.Log($"Player {player.PlayerID} cannot draw, no cards left in deck or war deck.");
         
-            gameWinnerId = GetWinnerId(player.PlayerID);
-
-            GameOver().Forget(); // end game if a player cannot draw, in a real server this would be handled more gracefully
-
-            cts.Cancel();
-
             return new DrawResponse
             {
                 Status = DrawResponseStatus.NoCardsLeft
@@ -268,48 +334,43 @@ public class Server
         };
     }
 
-    private async UniTask FakePlayerDraw()
+    private Outcome GetResult(CardData a, CardData b)
     {
-        await UniTask.Delay(UnityEngine.Random.Range(300, 800));
-
-        DrawResponse drawResponse = await DrawCard(new DrawRequest { PlayerId = 0 });
-
-        if (drawResponse.Status == DrawResponseStatus.Success)
-        {
-            client.ReceiveEnemyDrawn(drawResponse);
-        }   
-    }
-
-    private int GetResult(CardData a, CardData b)
-    {
-        int result = -1;
+        Outcome outcome = Outcome.Tie;
 
         if (a.Value > b.Value)
         {
-            result = 0;
+            outcome = Outcome.EnemyWin;
         }
         else if (a.Value < b.Value)
         {
-            result = 1;
+            outcome = Outcome.PlayerWin;
         }
 
-        return result;
+        return outcome;
     }
 
     private async UniTask<Resolve> Resolve()
     {
         await UniTask.Delay(500); // simulate server latency
 
-        Player player1 = players[0];
-        Player player2 = players[1];
+        Player player1 = players[0]; //enemy
+        Player player2 = players[1]; //player
 
-        int result = GetResult(player1.DrawnCards.Last(), player2.DrawnCards.Last());
+        Outcome roundOutcome = GetResult(player1.DrawnCards.Last(), player2.DrawnCards.Last());
 
-        if(result != -1)
+        if(roundOutcome == Outcome.Undefined)
+        {
+            Debug.LogError("Game outcome is undefined. This should not happen.");
+
+            return null;
+        }
+
+        if(roundOutcome != Outcome.Tie)
         {
             isWar = false; 
 
-            int winner = result > 0 ? 1 : 0; // determine winner based on result
+            int winner = roundOutcome == Outcome.EnemyWin ? 0 : 1; // determine winner based on result
 
             Player winnerPlayer = players[winner]; 
 
@@ -364,7 +425,7 @@ public class Server
 
     private void SendGameOver()
     {
-        client.ReceiveGameOver(new GameOver{ WinnerId = gameWinnerId });
+        client.ReceiveGameOver(new GameOver{ GameOutcome = gameOutcome });
     }
 
      private void SetGameState(GameState newState)
@@ -374,9 +435,16 @@ public class Server
         client.ReceiveGameState(gameState);   
     }
 
-    private int GetWinnerId(int loserId)
+    private Outcome GetWinnerGameOutcome(int winnerId)
     {
-        return players.FirstOrDefault(p => p.PlayerID != loserId).PlayerID;
+        if(winnerId == 1)
+        {
+            return Outcome.PlayerWin;
+        }
+        else
+        {
+            return Outcome.EnemyWin;
+        }
     }
 }
 
@@ -391,3 +459,10 @@ public enum GameState
         GameOver
     }
 
+public enum Outcome
+{
+    Undefined,
+    PlayerWin,
+    EnemyWin,
+    Tie
+}
