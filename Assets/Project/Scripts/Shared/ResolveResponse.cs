@@ -4,6 +4,7 @@ using UnityEngine;
 public class ResolveResponse : MonoBehaviour
 {
     public int WinnerId;
-    public bool isATie;
-    public List<DeckInfo> DeckInfos = new List<DeckInfo>();
+    public int WonPileCardsCount;
+    public bool IsATie;
+    public List<DeckData> DeckDatas = new List<DeckData>();
 }

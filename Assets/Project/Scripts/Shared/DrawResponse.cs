@@ -4,11 +4,11 @@ public class DrawResponse : MonoBehaviour
 {
     public int PlayerId;
     public string PlayerCardId;
+    public DeckData DeckInfo;
     public DrawResponseStatus Status;
-    public DeckInfo DeckInfo;
 }
 
-public class DeckInfo
+public class DeckData
 {
     public int PlayerId;
     public int DeckCardsLeft;
@@ -17,7 +17,8 @@ public class DeckInfo
 
 public enum DrawResponseStatus
 {
+    Error,
     Success,
     AlreadyDrawn,
-    Error
+    NoCardsLeft   
 }

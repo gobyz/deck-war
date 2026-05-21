@@ -4,10 +4,7 @@ using UnityEngine;
 public class Deck
 {
     private List<CardData> cards = new();
-
     public int CardsLeft => cards.Count;
-
-    public CardData DrawnCard;
 
     public Deck(List<CardData> source)
     {
@@ -31,7 +28,6 @@ public class Deck
     {
         CardData card = cards[^1];
         cards.RemoveAt(cards.Count - 1);
-        DrawnCard = card;
         return card;
     }
 }

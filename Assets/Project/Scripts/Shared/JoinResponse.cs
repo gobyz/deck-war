@@ -8,7 +8,7 @@ public class JoinResponse : MonoBehaviour
 
 public enum JoinResponseStatus
 {
+    Error,
     Success,
-    ServerFull,
-    Error
+    ServerFull
 }

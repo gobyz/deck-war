@@ -5,8 +5,11 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Data/Config/Game Config")]
 public class GameConfig : ScriptableObject
 {
-    [Header("Game Settings")]
-    public int MaxPlayers = 2;
+    public readonly int MaxPlayers = 2;
+    public readonly int StartingDeckSize = 26;
+    [Header("Clients")]
+    public int ClientIdPlayer = 35221;
+    public int ClientIdEnemy = 46523;
     [Header("Card Settings")]
     public CardTheme CardTheme;
     public float DrawAnimationDuration = 0.5f;

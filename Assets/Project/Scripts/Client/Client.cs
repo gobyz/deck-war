@@ -7,8 +7,9 @@ public class Client : MonoBehaviour
     public FakeWarServer server;
     public int clientId;
     private int playerId;
-    public static UnityEvent<string, DeckInfo> OnPlayerCardDrawn = new UnityEvent<string, DeckInfo>();
-    public static UnityEvent<string, DeckInfo> OnEnemyCardDrawn = new UnityEvent<string, DeckInfo>();
+    private GameConfig gameConfig;
+    public static UnityEvent<string, DeckData> OnPlayerCardDrawn = new UnityEvent<string, DeckData>();
+    public static UnityEvent<string, DeckData> OnEnemyCardDrawn = new UnityEvent<string, DeckData>();
     public static UnityEvent OnPlayerWon = new UnityEvent();
     public static UnityEvent OnEnemyWon = new UnityEvent();
     public static UnityEvent OnTie = new UnityEvent();
@@ -16,25 +17,27 @@ public class Client : MonoBehaviour
 
     void Awake()
     {
-        Instance = this;
+        Instance = this;       
     }
 
     private void Start()
-    {        
-        server = new FakeWarServer();
+    {   
+        gameConfig = GameConfigProvider.Instance.GameConfig;
+        clientId = gameConfig.ClientIdPlayer;    
+        server = new FakeWarServer(this);
     }
-    [ContextMenu("Join Game")]
+
     public async void Join()
     {
         JoinRequest joinRequest = new JoinRequest { ClientId = clientId };
 
-        JoinResponse joinResponse = await server.Join(joinRequest, this);
+        JoinResponse joinResponse = await server.Join(joinRequest);
 
         playerId = joinResponse.PlayerId;
 
         Debug.Log("Join response received. Status: " + joinResponse.Status);
     }
-    [ContextMenu("Draw Card")]
+
     public async void DrawRequest()
     {
         DrawRequest drawRequest = new DrawRequest { PlayerId = playerId };
@@ -57,7 +60,7 @@ public class Client : MonoBehaviour
     {
         OnResolveResponseReceived.Invoke(response);
 
-        if (response.isATie)
+        if (response.IsATie)
         {
             OnTie.Invoke();
         }

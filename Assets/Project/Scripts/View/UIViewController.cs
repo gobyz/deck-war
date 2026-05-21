@@ -14,10 +14,12 @@ public class UIViewController : MonoBehaviour
     [SerializeField] private TMP_Text playerWarDeckCountText;
     [SerializeField] private TMP_Text enemyDeckCountText;
     [SerializeField] private TMP_Text enemyWarDeckCountText;
+    [SerializeField] private GameObject tieDeck;
+    [SerializeField] private TMP_Text tieDeckCountText;
     
     private void Start()
     {
-        FakeWarServer.OnGameStateChanged += OnGameStateChanged;
+        FakeWarServer.OnGameStateSet += OnGameStateChanged;
         Client.OnPlayerCardDrawn.AddListener(OnPlayerCardDrawn);
         Client.OnEnemyCardDrawn.AddListener(OnEnemyCardDrawn);
         Client.OnResolveResponseReceived.AddListener(OnResolveResponseReceived);
@@ -55,13 +57,14 @@ public class UIViewController : MonoBehaviour
         }
     }
 
-    private void OnPlayerCardDrawn(string cardId, DeckInfo deckInfo)
+    private void OnPlayerCardDrawn(string cardId, DeckData deckInfo)
     {
         playerDeckCountText.text = deckInfo.DeckCardsLeft.ToString();
         playerWarDeckCountText.text = deckInfo.WarDeckCardsLeft.ToString();
+        drawButton.interactable = true;
     }
 
-    private void OnEnemyCardDrawn(string cardId, DeckInfo deckInfo)
+    private void OnEnemyCardDrawn(string cardId, DeckData deckInfo)
     {
         enemyDeckCountText.text = deckInfo.DeckCardsLeft.ToString();
         enemyWarDeckCountText.text = deckInfo.WarDeckCardsLeft.ToString();
@@ -69,7 +72,7 @@ public class UIViewController : MonoBehaviour
 
     private void OnResolveResponseReceived(ResolveResponse resolveResponse)
     {
-        foreach(DeckInfo deckInfo in resolveResponse.DeckInfos)
+        foreach(DeckData deckInfo in resolveResponse.DeckDatas)
         {
             if(Client.Instance.IsLocalPlayer(deckInfo.PlayerId))
             {
@@ -81,6 +84,16 @@ public class UIViewController : MonoBehaviour
                 enemyDeckCountText.text = deckInfo.DeckCardsLeft.ToString();
                 enemyWarDeckCountText.text = deckInfo.WarDeckCardsLeft.ToString();
             }
+        }
+
+        if(resolveResponse.IsATie)
+        {
+            tieDeck.SetActive(true);
+            tieDeckCountText.text = resolveResponse.WonPileCardsCount.ToString();
+        }
+        else
+        {
+            tieDeck.SetActive(false);
         }
     }
     private void ShowGameUI(bool value)
