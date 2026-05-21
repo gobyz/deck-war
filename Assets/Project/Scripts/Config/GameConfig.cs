@@ -7,6 +7,7 @@ public class GameConfig : ScriptableObject
 {
     public readonly int MaxPlayers = 2;
     public readonly int StartingDeckSize = 26;
+    public readonly int WarCardsCount = 4;
     [Header("Clients")]
     public int ClientIdPlayer = 35221;
     public int ClientIdEnemy = 46523;
@@ -20,9 +21,10 @@ public class GameConfig : ScriptableObject
     public float HideAnimationDuration = 0.5f;
     public Ease HideAnimationEase = Ease.Linear;
     public List<CardData> FullDeck = new List<CardData>();
+    [Header("Shuffle")]
+    public float ShuffleAnimationDuration = 0.5f;
+    public float ShuffleAnimationStrength = 0.5f;
+    public int ShuffleAnimationVibrato = 10;
+    public float ShuffleAnimationRandomness = 0.5f;
 
-    public CardData GetCardById(string id)
-    {
-        return FullDeck.Find(card => card.Id == id);
-    }
 }

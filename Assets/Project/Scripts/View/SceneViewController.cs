@@ -1,12 +1,15 @@
-using System;
 using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
 
 public class SceneViewController : MonoBehaviour
 {
+    [Header("References")]
+    [SerializeField] private Client client;
     private GameConfig gameConfig;
+    [Header("Card")]
     [SerializeField] private CardView cardViewPrefab;
+    [Header("Anchors")]
     [SerializeField] private Transform playerDrawStartAnchor;
     [SerializeField] private Transform playerDrawEndAnchor;
     [SerializeField] private Transform enemyDrawStartAnchor;
@@ -18,59 +21,46 @@ public class SceneViewController : MonoBehaviour
     private int enemyCardCount;
     private List<CardView> activeCardViews = new List<CardView>();
 
-
-    private void Awake()
+    private void Start()
     {
         gameConfig = GameConfigProvider.Instance.GameConfig;
-        FakeWarServer.OnGameStateSet += OnGameStateChanged;
-        Client.OnPlayerCardDrawn.AddListener(PlayerDraw);
-        Client.OnEnemyCardDrawn.AddListener(EnemyDraw);
-        Client.OnPlayerWon.AddListener(OnPlayerWon);
-        Client.OnEnemyWon.AddListener(OnEnemyWon);
-        Client.OnTie.AddListener(OnTie);
+
+        client.OnGameStateReceived.AddListener(OnGameState);
+        client.OnDrawnReceived.AddListener(OnDrawn);
+        client.OnResolveReceived.AddListener(OnResolveReceived);
     }
 
-    private void OnGameStateChanged(GameState state)
+    private void OnGameState(GameState state)
     {
-        switch (state)
+        if(state == GameState.WaitingForPlayers)
         {
-            case GameState.WaitingForPlayers:
-                
-                break;
+            RemoveActiveCards();
+        }
+        if(state == GameState.Drawing)
+        {
+            ResetCardCounts();
+        }
+    }
+    
+    private void ResetCardCounts()
+    {
+        playerCardCount = 0;
+        enemyCardCount = 0;
+    }
 
-            case GameState.Ready:
-                
-                break;
-
-            case GameState.Shuffling:
-
-                break;
-
-            case GameState.Drawing:
-                playerCardCount = 0;
-                enemyCardCount = 0;
-                break;
-
-            case GameState.Resolving:
-                
-                break;
-            case GameState.GameOver:
-
-                break;
+    private void OnDrawn(DrawResponse drawResponse)
+    {
+        if (Client.Instance.IsLocalPlayer(drawResponse.PlayerId))
+        {
+            DrawCard(drawResponse, false);
+        }
+        else
+        {
+            DrawCard(drawResponse, true);
         }
     }
 
-    private void PlayerDraw(string cardId, DeckData deckInfo)
-    { 
-        DrawCard(cardId, false);
-    }
-
-    private void EnemyDraw(string cardId, DeckData deckInfo)
-    {
-        DrawCard(cardId, true);
-    }
-
-    private void DrawCard(string cardId, bool isEnemy)
+    private void DrawCard(DrawResponse drawResponse, bool isEnemy)
     {
         CardView cardView = Instantiate(cardViewPrefab);
         activeCardViews.Add(cardView);
@@ -82,51 +72,52 @@ public class SceneViewController : MonoBehaviour
         {
             startAnchor = enemyCardAnchors[enemyCardCount].StartDrawAnchor;
             endAnchor = enemyCardAnchors[enemyCardCount].EndDrawAnchor;
+            
             enemyCardCount++;
+            cardView.Initialize(drawResponse.CardId, drawResponse.IsWar && enemyCardCount != gameConfig.WarCardsCount);
         }
         else
         {
             startAnchor = playerCardAnchors[playerCardCount].StartDrawAnchor;
             endAnchor = playerCardAnchors[playerCardCount].EndDrawAnchor;
+
             playerCardCount++;
+            cardView.Initialize(drawResponse.CardId, drawResponse.IsWar && playerCardCount != gameConfig.WarCardsCount);
         }
 
         cardView.transform.position = startAnchor.position;
-        cardView.transform.rotation = startAnchor.rotation; 
-
-        cardView.Initialize(cardId);
+        cardView.transform.rotation = startAnchor.rotation;
 
         cardView.transform.DOLocalMove(endAnchor.localPosition, gameConfig.DrawAnimationDuration).SetEase(gameConfig.DrawAnimationEase);
     }
 
-    private void OnPlayerWon()
+       private void OnResolveReceived(Resolve resolve)
     {
+        Transform targetAnchor;
+
+        if (resolve.IsATie)
+        {
+            targetAnchor = tieDeckAnchor;
+        }
+        else
+        {
+            if (Client.Instance.IsLocalPlayer(resolve.WinnerId))
+            {
+                targetAnchor = playerDrawStartAnchor;
+            }
+            else
+            {
+                targetAnchor = enemyDrawStartAnchor;
+            }
+        }
+
         foreach(CardView cardView in activeCardViews)
         {
             cardView.transform.DOLocalRotate(gameConfig.HideRotationAngle, gameConfig.HideRotationDuration, RotateMode.LocalAxisAdd).SetEase(gameConfig.HideRotationEase);
-            cardView.transform.DOLocalMove(playerDrawStartAnchor.localPosition, gameConfig.HideAnimationDuration).SetEase(gameConfig.HideAnimationEase).onComplete = () => RemoveActiveCards();
+            cardView.transform.DOLocalMove(targetAnchor.localPosition, gameConfig.HideAnimationDuration).SetEase(gameConfig.HideAnimationEase).onComplete = () => RemoveActiveCards();
         }
     }
-
-    private void OnEnemyWon()
-    {
-        foreach(CardView cardView in activeCardViews)
-        {
-            cardView.transform.DOLocalRotate(gameConfig.HideRotationAngle, gameConfig.HideRotationDuration, RotateMode.LocalAxisAdd).SetEase(gameConfig.HideRotationEase);
-            cardView.transform.DOLocalMove(enemyDrawStartAnchor.localPosition, gameConfig.HideAnimationDuration).SetEase(gameConfig.HideAnimationEase).onComplete = () => RemoveActiveCards();
-        }
-    }
-
-
-    private void OnTie()
-    {
-        foreach(CardView cardView in activeCardViews)
-        {
-            cardView.transform.DOLocalRotate(gameConfig.HideRotationAngle, gameConfig.HideRotationDuration, RotateMode.LocalAxisAdd).SetEase(gameConfig.HideRotationEase);
-            cardView.transform.DOLocalMove(tieDeckAnchor.localPosition, gameConfig.HideAnimationDuration).SetEase(gameConfig.HideAnimationEase).onComplete = () => RemoveActiveCards();
-        }
-    }
-
+    
     private void RemoveActiveCards()
     {
         foreach (var cardView in activeCardViews)
@@ -136,9 +127,10 @@ public class SceneViewController : MonoBehaviour
         activeCardViews.Clear();
     }
 
-    private void OnDisable()
+    private void OnDestroy()
     {
-        Client.OnPlayerCardDrawn.RemoveListener(PlayerDraw);
-        Client.OnEnemyCardDrawn.RemoveListener(EnemyDraw);
+        client.OnGameStateReceived.RemoveListener(OnGameState);
+        client.OnDrawnReceived.RemoveListener(OnDrawn);
+        client.OnResolveReceived.RemoveListener(OnResolveReceived);   
     }
 }

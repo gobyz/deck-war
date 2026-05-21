@@ -6,12 +6,18 @@ public class CardView : MonoBehaviour
 
     private CardData cardData;
 
-    public void Initialize(string cardId)
+    public void Initialize(string cardId, bool faceDown = true)
     {
-        CardData card = GameConfigProvider.Instance.GameConfig.GetCardById(cardId);
-        this.cardData = card;
+        cardData = CardData.GetCardDataById(cardId);
 
-        ShowFront();
+        if (faceDown)
+        {
+            ShowBack();   
+        }
+        else
+        {
+            ShowFront();
+        }       
     }
 
     public void ShowFront()

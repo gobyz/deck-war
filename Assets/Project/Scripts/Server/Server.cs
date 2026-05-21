@@ -7,78 +7,84 @@ using Cysharp.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 
-public class FakeWarServer
+public class Server
 { 
-    [SerializeField] private GameConfig gameConfig;
+    private GameConfig gameConfig;
 
     private GameState gameState;
 
-    private List<Player> players = new List<Player>();
-
     private Client client; // only one client because this is a fake server, in a real server this would be a list of clients
+
+    private List<Player> players = new List<Player>(); 
+
+    private List<CardData> winPile = new List<CardData>();
+
+    private bool isWar = false; // flag to indicate if the round is a war, used to determine how many cards to draw in the next round
+
+    private int cardsToDraw = 1; // number of cards to draw in the next round
+
+    private int gameWinnerId = -1; // id of the player who won the game
 
     private CancellationTokenSource cts = new();
 
-    public static event Action<GameState> OnGameStateSet;
-
-    private List<CardData> winPile = new List<CardData>(); // pile of cards won in the round
-
-    private bool isWar = false; // flag to indicate if the last round was a war, used to determine how many cards to draw in the next round
-
-    public int cardsToDraw = 1;
-
-    public FakeWarServer(Client client)
+    public Server(Client client)
     {
         this.client = client;
         gameConfig = GameConfigProvider.Instance.GameConfig;
-        StartServer().Forget();
+        StartServerLoop();
     }
 
-    private async UniTaskVoid StartServer()
+    private void StartServerLoop()
     {
-        await Run(cts.Token);
+        cts = new();
+
+        ServerLoop(cts.Token).Forget();
     }
 
-    private async UniTask Run(CancellationToken token)
-    {
-        await UniTask.Delay(1000); // simulate server startup time
+    private async UniTask ServerLoop(CancellationToken token)
+    {     
+        ServerClear();
+
+        await UniTask.Delay(1000); // simulate delay
 
         Debug.Log("Server started. Waiting for players to join...");
 
         SetGameState(GameState.WaitingForPlayers);
 
-        Join(new JoinRequest { ClientId = gameConfig.ClientIdPlayer }).Forget(); // simulate fake player joining, in a real server this would be triggered by a client connecting and sending a join request
+        Join(new JoinRequest { ClientId = gameConfig.ClientIdEnemy }, 0).Forget(); // simulate fake player joining
         
         await AreAllPlayersReady();
 
         Debug.Log("All players ready. Starting game...");
 
-        SetGameState(GameState.Ready);
-
-        await UniTask.Delay(1000);
-
-        InitializePlayerDecks();
+        await UniTask.Delay(1000); // simulate delay
 
         SetGameState(GameState.Shuffling);
         
-        await UniTask.Delay(1000); //shuffling
+        await UniTask.Delay(3000); // simulate delay
+
+        SetGameState(GameState.Ready);
+
+        InitializePlayerDecks();
 
         await Game(token);      
     }
 
     private async UniTask Game(CancellationToken token)
     {
-        while(gameState != GameState.GameOver)
+        while (true)
         {
             Debug.Log("Starting round...");        
 
             Debug.Log("Waiting for players to draw...");
 
             SetCardsToDraw();
-            
+
             SetGameState(GameState.Drawing);  
 
             await Draw();
+
+            token.ThrowIfCancellationRequested();
 
             Debug.Log("All players drawn. Resolving round...");
 
@@ -86,16 +92,22 @@ public class FakeWarServer
 
             await UniTask.Delay(500); // resolving
 
-            ResolveResponse resolveResponse = await Resolve();
+            Resolve resolve = await Resolve();
 
             Debug.Log("Round resolved. Sending response...");
 
-            SendResolveResponse(resolveResponse);
+            SendResolve(resolve);
 
             if(players.Any(p => !p.CanDraw()))
             {
+                gameWinnerId = GetWinnerId(players.Find(p => !p.CanDraw()).PlayerID);
+
                 GameOver().Forget();
-            }
+
+                cts.Cancel();
+
+                token.ThrowIfCancellationRequested();
+            }   
         }
     }
 
@@ -103,18 +115,32 @@ public class FakeWarServer
     {
         SetGameState(GameState.GameOver);
 
+        SendGameOver();
+
         Debug.Log("Game over.");
+
+        await UniTask.Delay(3000);
+
+        StartServerLoop(); // restart server loop 
+    }
+
+    private void ServerClear()
+    {
+        players.Clear();
+        winPile.Clear();
+        isWar = false;
+        cardsToDraw = 1;
+        gameWinnerId = -1;
     }
 
     private void SetCardsToDraw()
     {
-        cardsToDraw = isWar ? 3 : 1;
+        cardsToDraw = isWar ? gameConfig.WarCardsCount : 1;
     }
 
-
-    public async UniTask<JoinResponse> Join(JoinRequest joinRequest)
+    public async UniTask<JoinResponse> Join(JoinRequest joinRequest, int delay = 500)
     {
-        await UniTask.Delay(500); // simulate server latency
+        await UniTask.Delay(delay); // simulate server latency
 
         if(players.Count < gameConfig.MaxPlayers)
         {
@@ -157,7 +183,7 @@ public class FakeWarServer
     {
         for (int i = 0; i < cardsToDraw; i++)
         {
-             FakePlayerDraw().Forget(); // simulate fake player drawing, in a real server this would be triggered by a client sending a draw request
+            await FakePlayerDraw(); // simulate fake player drawing, in a real server this would be triggered by a client sending a draw request
         }
 
         while (!players.All(p => p.DrawnCardsCount == cardsToDraw))
@@ -186,6 +212,14 @@ public class FakeWarServer
     {
         await UniTask.Delay(500); // simulate server latency
 
+        if(gameState != GameState.Drawing)
+        {
+            return new DrawResponse
+            {
+                Status = DrawResponseStatus.Error
+            };
+        }
+
         Player player = GetPlayer(drawRequest.PlayerId);
 
         if(player.DrawnCardsCount >= cardsToDraw)
@@ -199,10 +233,12 @@ public class FakeWarServer
         if(!player.CanDraw())
         {
             Debug.LogError($"Player {player.PlayerID} cannot draw, no cards left in deck or war deck.");
+        
+            gameWinnerId = GetWinnerId(player.PlayerID);
 
-            cts.Cancel(); // end game if a player cannot draw, in a real server this would be handled more gracefully
+            GameOver().Forget(); // end game if a player cannot draw, in a real server this would be handled more gracefully
 
-            GameOver().Forget();
+            cts.Cancel();
 
             return new DrawResponse
             {
@@ -221,7 +257,8 @@ public class FakeWarServer
         return new DrawResponse
         {
             PlayerId = drawRequest.PlayerId,
-            PlayerCardId = card.Id,
+            CardId = card.Id,
+            IsWar = isWar,
             DeckInfo = new DeckData
             {
                 DeckCardsLeft = player.Deck.CardsLeft,
@@ -231,55 +268,48 @@ public class FakeWarServer
         };
     }
 
-    private async UniTaskVoid FakePlayerDraw()
+    private async UniTask FakePlayerDraw()
     {
         await UniTask.Delay(UnityEngine.Random.Range(300, 800));
 
         DrawResponse drawResponse = await DrawCard(new DrawRequest { PlayerId = 0 });
 
-        client.OnEnemyDrawn(drawResponse);
+        if (drawResponse.Status == DrawResponseStatus.Success)
+        {
+            client.ReceiveEnemyDrawn(drawResponse);
+        }   
     }
 
-    private int GetResult(List<CardData> a, List<CardData> b)
+    private int GetResult(CardData a, CardData b)
     {
-        int result = 0;
+        int result = -1;
 
-        if(a.Count == b.Count)
+        if (a.Value > b.Value)
         {
-            for(int i = 0; i < a.Count; i++)
-            {
-                if (a[i].Value > b[i].Value)
-                {
-                    result -= 1;
-                }
-                else if (a[i].Value < b[i].Value)
-                {
-                    result += 1;
-                }
-            }
+            result = 0;
         }
-        else
+        else if (a.Value < b.Value)
         {
-            Debug.LogError("Error: Players have drawn different number of cards. This should not happen.");
+            result = 1;
         }
 
-        return result; // return positive if player 1 wins, negative if player 2 wins, 0 if tie
+        return result;
     }
 
-    private async UniTask<ResolveResponse> Resolve()
+    private async UniTask<Resolve> Resolve()
     {
         await UniTask.Delay(500); // simulate server latency
 
         Player player1 = players[0];
         Player player2 = players[1];
 
-        int result = GetResult(player1.DrawnCards, player2.DrawnCards);
+        int result = GetResult(player1.DrawnCards.Last(), player2.DrawnCards.Last());
 
-        if(result != 0)
+        if(result != -1)
         {
             isWar = false; 
 
-            int winner = result < 0 ? 0 : 1; // determine winner based on result
+            int winner = result > 0 ? 1 : 0; // determine winner based on result
 
             Player winnerPlayer = players[winner]; 
 
@@ -289,7 +319,7 @@ public class FakeWarServer
 
             players.ForEach(p => p.DrawnCards.Clear()); // clear drawn cards for all players
 
-            return new ResolveResponse
+            return new Resolve
             {
                 WinnerId = players[winner].PlayerID,
                 WonPileCardsCount = winPile.Count,
@@ -303,7 +333,7 @@ public class FakeWarServer
 
             players.ForEach(p => p.DrawnCards.Clear()); // clear drawn cards for all players
 
-            return new ResolveResponse
+            return new Resolve
             {
                 WonPileCardsCount = winPile.Count,
                 DeckDatas = GetDeckDatas(),
@@ -327,18 +357,26 @@ public class FakeWarServer
         }).ToList();
     }
 
-    private void SendResolveResponse(ResolveResponse response)
+    private void SendResolve(Resolve resolve)
     {
-        client.ReceiveResolveResponce(response);
+        client.ReceiveResolve(resolve);
+    }
+
+    private void SendGameOver()
+    {
+        client.ReceiveGameOver(new GameOver{ WinnerId = gameWinnerId });
     }
 
      private void SetGameState(GameState newState)
     {
         gameState = newState;
 
-        OnGameStateSet?.Invoke(gameState);
+        client.ReceiveGameState(gameState);   
+    }
 
-        Debug.Log("Game state set to: " + gameState);
+    private int GetWinnerId(int loserId)
+    {
+        return players.FirstOrDefault(p => p.PlayerID != loserId).PlayerID;
     }
 }
 

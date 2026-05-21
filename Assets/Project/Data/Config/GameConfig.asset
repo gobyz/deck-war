@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 362dd5e98b7fbc4468c1a99eb3390194, type: 3}
   m_Name: GameConfig
   m_EditorClassIdentifier: Assembly-CSharp::GameConfig
-  MaxPlayers: 2
+  ClientIdPlayer: 35221
+  ClientIdEnemy: 46523
   CardTheme: {fileID: 11400000, guid: 0388dcc664398004abd742d257e0b26c, type: 2}
   DrawAnimationDuration: 0.5
   DrawAnimationEase: 1
@@ -74,3 +75,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 21334e1163382c74284862b2ba800271, type: 2}
   - {fileID: 11400000, guid: 55e213054dd38264b908f49a4f39976b, type: 2}
   - {fileID: 11400000, guid: 9fa08685edd981b498a8bdc52d828d84, type: 2}
+  ShuffleAnimationDuration: 3
+  ShuffleAnimationStrength: 10
+  ShuffleAnimationVibrato: 10
+  ShuffleAnimationRandomness: 10

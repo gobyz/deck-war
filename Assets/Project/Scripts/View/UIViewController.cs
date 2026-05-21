@@ -1,12 +1,20 @@
 using System;
+using System.Collections.Generic;
+using DG.Tweening;
 using TMPro;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class UIViewController : MonoBehaviour
 {
+    [Header("References")] 
+    private GameConfig gameConfig;
     [SerializeField] private Client client;
+    [SerializeField] private AudioController audioController;
+    [Header("Shuffle UI")]
+    [SerializeField] private GameObject shuffleUI;
+    [SerializeField] private GameObject shuffleLabel;
+    [Header("Game UI")]
     [SerializeField] private GameObject gameUI;
     [SerializeField] private Button joinButton;
     [SerializeField] private Button drawButton;
@@ -16,32 +24,47 @@ public class UIViewController : MonoBehaviour
     [SerializeField] private TMP_Text enemyWarDeckCountText;
     [SerializeField] private GameObject tieDeck;
     [SerializeField] private TMP_Text tieDeckCountText;
+    [SerializeField] private List<Image> cardBackImages = new List<Image>();
+    [Header("Win UI")]
+    [SerializeField] private GameObject winUI;
+    [SerializeField] private GameObject winLabel;
+    [SerializeField] private GameObject loseLabel;
     
     private void Start()
     {
-        FakeWarServer.OnGameStateSet += OnGameStateChanged;
-        Client.OnPlayerCardDrawn.AddListener(OnPlayerCardDrawn);
-        Client.OnEnemyCardDrawn.AddListener(OnEnemyCardDrawn);
-        Client.OnResolveResponseReceived.AddListener(OnResolveResponseReceived);
+        gameConfig = GameConfigProvider.Instance.GameConfig;
+
+        client.OnGameStateReceived.AddListener(OnGameState);
+        client.OnDrawnReceived.AddListener(OnDrawn);
+        client.OnResolveReceived.AddListener(OnResolve);
+        client.OnGameOverReceived.AddListener(OnGameOver);
         joinButton.onClick.AddListener(OnJoinClicked);
         drawButton.onClick.AddListener(OnDrawClicked);
+
+        SetCardTheme();
     }
-    private void OnGameStateChanged(GameState state)
+
+    private void SetCardTheme()
+    {
+        cardBackImages.ForEach(image => image.sprite = gameConfig.CardTheme.BackSprite);
+    }
+
+    private void OnGameState(GameState state)
     {
         switch (state)
         {
             case GameState.WaitingForPlayers:
-                ShowGameUI(false);
-                SetJoinButton(true);
-                break;
-
-            case GameState.Ready:
-                ShowGameUI(true);
-                SetJoinButton(false);     
+                ResetUI();
                 break;
 
             case GameState.Shuffling:
+                SetJoinButton(false);  
+                ShowShuffleUI(true);
+                break;
 
+            case GameState.Ready:
+                ShowShuffleUI(false);
+                ShowGameUI(true);          
                 break;
 
             case GameState.Drawing:
@@ -51,26 +74,41 @@ public class UIViewController : MonoBehaviour
             case GameState.Resolving:
                 SetDrawButton(false);
                 break;
-            case GameState.GameOver:
-
-                break;
         }
     }
 
-    private void OnPlayerCardDrawn(string cardId, DeckData deckInfo)
+    private void ResetUI()
     {
-        playerDeckCountText.text = deckInfo.DeckCardsLeft.ToString();
-        playerWarDeckCountText.text = deckInfo.WarDeckCardsLeft.ToString();
-        drawButton.interactable = true;
+        ShowGameUI(false);
+        ShowWinUI(false);
+        ShowShuffleUI(false);
+        ShowTieDeck(false);
+        SetJoinButton(true);
+
+        playerDeckCountText.text = gameConfig.StartingDeckSize.ToString();
+        enemyDeckCountText.text = gameConfig.StartingDeckSize.ToString();
+        playerWarDeckCountText.text = "0"; 
+        enemyWarDeckCountText.text = "0";
+        tieDeckCountText.text = "0";
     }
 
-    private void OnEnemyCardDrawn(string cardId, DeckData deckInfo)
+    private void OnDrawn(DrawResponse drawResponse)
     {
-        enemyDeckCountText.text = deckInfo.DeckCardsLeft.ToString();
-        enemyWarDeckCountText.text = deckInfo.WarDeckCardsLeft.ToString();
+        if (client.IsLocalPlayer(drawResponse.PlayerId))
+        {
+            playerDeckCountText.text = drawResponse.DeckInfo.DeckCardsLeft.ToString();
+            playerWarDeckCountText.text = drawResponse.DeckInfo.WarDeckCardsLeft.ToString();
+
+            drawButton.interactable = true;
+        }
+        else
+        {
+            enemyDeckCountText.text = drawResponse.DeckInfo.DeckCardsLeft.ToString();
+            enemyWarDeckCountText.text =drawResponse.DeckInfo.WarDeckCardsLeft.ToString();
+        } 
     }
 
-    private void OnResolveResponseReceived(ResolveResponse resolveResponse)
+    private void OnResolve(Resolve resolveResponse)
     {
         foreach(DeckData deckInfo in resolveResponse.DeckDatas)
         {
@@ -96,6 +134,36 @@ public class UIViewController : MonoBehaviour
             tieDeck.SetActive(false);
         }
     }
+
+    private void ShowTieDeck(bool value)
+    {
+        tieDeck.SetActive(value);
+    }
+
+    private void OnGameOver(GameOver gameOver)
+    {
+        if (Client.Instance.IsLocalPlayer(gameOver.WinnerId))
+        {
+            ShowWinUI(true, true);
+        }
+        else
+        {
+            ShowWinUI(true, false);
+        }
+    }
+
+    private void ShowShuffleUI(bool value)
+    {
+        shuffleUI.SetActive(value);
+        shuffleLabel.SetActive(value);
+        if (value)
+        {
+             shuffleLabel.transform.localScale = Vector3.zero;
+             shuffleLabel.transform.DOScale(Vector3.one, gameConfig.ShuffleAnimationDuration);
+             shuffleLabel.transform.DOShakePosition(gameConfig.ShuffleAnimationDuration, gameConfig.ShuffleAnimationStrength, gameConfig.ShuffleAnimationVibrato, gameConfig.ShuffleAnimationRandomness); 
+        }  
+    }
+
     private void ShowGameUI(bool value)
     {
         gameUI.SetActive(value);
@@ -118,18 +186,32 @@ public class UIViewController : MonoBehaviour
     {
         client.Join();
 
+        audioController.OnJoinClick();
+
         joinButton.interactable = false;
     }
 
     private void OnDrawClicked()
     {
-        client.DrawRequest();
+        client.Draw();
+
+        audioController.OnDrawClick();
 
         drawButton.interactable = false;
     }
 
+    private void ShowWinUI(bool value,bool playerWon = false)
+    {
+        winUI.SetActive(value);
+        winLabel.SetActive(playerWon);
+        loseLabel.SetActive(!playerWon); 
+    }
+
     void OnDestroy()
     {
+        client.OnGameStateReceived.RemoveListener(OnGameState);
+        client.OnDrawnReceived.RemoveListener(OnDrawn);
+        client.OnResolveReceived.RemoveListener(OnResolve);
         joinButton.onClick.RemoveListener(OnJoinClicked);
         drawButton.onClick.RemoveListener(OnDrawClicked);
     }
