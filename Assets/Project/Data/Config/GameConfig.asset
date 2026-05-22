@@ -23,12 +23,12 @@ MonoBehaviour:
   ClientIdEnemy: 46523
   CardTheme: {fileID: 11400000, guid: 0388dcc664398004abd742d257e0b26c, type: 2}
   DrawAnimationDuration: 0.5
-  DrawAnimationEase: 1
+  DrawAnimationEase: 3
   HideRotationAngle: {x: 0, y: 0, z: 180}
   HideRotationEase: 1
   HideRotationDuration: 0.5
   HideAnimationDuration: 0.5
-  HideAnimationEase: 1
+  HideAnimationEase: 2
   FullDeck:
   - {fileID: 11400000, guid: a6ef9fa7cd707e84a82b965409986d58, type: 2}
   - {fileID: 11400000, guid: ec19e61e13959224ea394f2be927a9ed, type: 2}

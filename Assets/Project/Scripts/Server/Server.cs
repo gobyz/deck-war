@@ -278,12 +278,12 @@ public class Server
     {
         await UniTask.Delay(500);
 
+        //emulate server errors
         if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.DrawTimeoutChance)
         {
             await UniTask.Delay(gameConfig.ServerTimeoutDuration);
         }
 
-        //emulate server errors
         if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.DrawErrorChance)
         {
             DrawResponse drawResponse = new DrawResponse
@@ -397,9 +397,22 @@ public class Server
             return null;
         }
 
-        isWar = roundOutcome == Outcome.Tie;
-
         Player winnerPlayer = roundOutcome == Outcome.EnemyWin ? enemy : player;
+
+        if(roundOutcome != Outcome.Tie)
+        {
+            isWar = false;
+
+            winPile.ForEach(card => winnerPlayer.WarDeck.AddCard(card)); // winner takes all cards in the win pile
+
+            winPile.Clear(); // clear win pile for next round      
+        }
+        else
+        {
+            isWar = true;
+        }
+
+        ClearDrawnCards(); // clear drawn cards for all players
 
         Resolve resolve = new Resolve
         {
@@ -408,15 +421,6 @@ public class Server
             DeckDatas = GetDeckDatas(),
             Outcome = roundOutcome
         };
-
-        if(!isWar)
-        {
-            winPile.ForEach(card => winnerPlayer.WarDeck.AddCard(card)); // winner takes all cards in the win pile
-
-            winPile.Clear(); // clear win pile for next round
-
-            ClearDrawnCards(); // clear drawn cards for all players
-        }
 
         return resolve;
     }

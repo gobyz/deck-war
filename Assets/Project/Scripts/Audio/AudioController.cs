@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 public class AudioController : MonoBehaviour
@@ -10,12 +9,17 @@ public class AudioController : MonoBehaviour
     [SerializeField] private AudioClip buttonClick;
     [SerializeField] private AudioClip cardShuffle;
     [SerializeField] private AudioClip cardDraw;
+    [SerializeField] private AudioClip win;
+    [SerializeField] private AudioClip lose;
+    [SerializeField] private AudioClip tie;
+
 
     void Start()
     {
         PlayMusicLoop();
         client.OnGameStateReceived.AddListener(OnGameState);
         client.OnDrawnReceived.AddListener(OnDrawn);
+        client.OnGameOverReceived.AddListener(OnGameOver);
     }
 
     private void OnGameState(GameState gameState)
@@ -23,12 +27,15 @@ public class AudioController : MonoBehaviour
         if(gameState == GameState.Shuffling)
         {
             PlaySFX(cardShuffle); 
-        }      
+        }  
     }
 
     private void OnDrawn(DrawResponse drawResponse)
     {
-        PlaySFX(cardDraw);
+        if(drawResponse.Status == DrawResponseStatus.Success)
+        {
+           PlaySFX(cardDraw); 
+        }      
     }
 
     private void PlayMusicLoop()
@@ -47,8 +54,27 @@ public class AudioController : MonoBehaviour
     {
         PlaySFX(buttonClick);
     }
+
     public void OnDrawClick()
     {
-         PlaySFX(buttonClick);
+        PlaySFX(buttonClick);      
+    }
+
+    private void OnGameOver(GameOver gameOver)
+    {
+        switch (gameOver.GameOutcome)
+        {
+            case Outcome.PlayerWin:
+                PlaySFX(win);
+                break;
+
+            case Outcome.EnemyWin:
+                PlaySFX(lose);
+                break;
+
+            case Outcome.Tie:
+                PlaySFX(tie);
+                break;
+        }
     }
 }

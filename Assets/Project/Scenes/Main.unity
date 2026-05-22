@@ -1307,6 +1307,9 @@ MonoBehaviour:
   buttonClick: {fileID: 8300000, guid: f088e7a96046fd449902727ae35fbfd1, type: 3}
   cardShuffle: {fileID: 8300000, guid: 44d514d963e14d241825716d379085f2, type: 3}
   cardDraw: {fileID: 8300000, guid: 9ec7d1add213c504b95a645d9e7a1e40, type: 3}
+  win: {fileID: 8300000, guid: b14b133b49d40b74b8cd750ccb251a45, type: 3}
+  lose: {fileID: 8300000, guid: 05aa1383af4e8bf41931f6cd0e91236d, type: 3}
+  tie: {fileID: 8300000, guid: 6ff103b985dff0e4e927af83037a3767, type: 3}
 --- !u!1 &214603613
 GameObject:
   m_ObjectHideFlags: 0

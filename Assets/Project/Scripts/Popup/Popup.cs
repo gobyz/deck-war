@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,11 +12,8 @@ public enum PopupType
 public class Popup : MonoBehaviour
 {
     [SerializeField] private PopupType popupType;
-
     public PopupType PopupType => popupType;
-
     [SerializeField] private bool canBeClosed;
-
     [SerializeField] private Button okButton;
 
     private void Start()

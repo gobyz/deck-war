@@ -9,6 +9,7 @@ public class Client : MonoBehaviour
     private int clientId;
     private int playerId;
     private GameConfig gameConfig;
+    
     [HideInInspector] public UnityEvent<GameState> OnGameStateReceived = new UnityEvent<GameState>();
     [HideInInspector] public UnityEvent<JoinResponse> OnJoinReceived = new UnityEvent<JoinResponse>();
     [HideInInspector] public UnityEvent<DrawResponse> OnDrawnReceived = new UnityEvent<DrawResponse>();   
@@ -18,9 +19,7 @@ public class Client : MonoBehaviour
     [HideInInspector] public UnityEvent OnTimeoutEnded = new UnityEvent();
 
     private CancellationTokenSource timeoutCts = new();
-    private bool timeoutStarted = false; // Flag to track if the timeout has started
-
-  
+    private bool timeoutStarted = false;
 
     void Awake()
     {
@@ -38,22 +37,6 @@ public class Client : MonoBehaviour
     {
         return this.playerId == playerId;
     }
-
-    /*public async void Join()
-    {
-        JoinRequest joinRequest = new JoinRequest { ClientId = clientId };
-
-        JoinResponse joinResponse = await server.Join(joinRequest);
-
-        if(joinResponse.Status == JoinResponseStatus.Success)
-        {
-            playerId = joinResponse.PlayerId;    
-        }
-
-        OnJoinReceived.Invoke(joinResponse);
-    }*/
-
-
 
     public async void Join()
     {
@@ -82,17 +65,6 @@ public class Client : MonoBehaviour
         OnJoinReceived.Invoke(joinResponse);
     }  
 
-    public async UniTask TimeoutCheck(CancellationToken token)
-    {
-        await UniTask.Delay(gameConfig.ClientTimeoutDuration);
-
-        token.ThrowIfCancellationRequested();
-
-        OnTimeoutStarted.Invoke();
-
-        timeoutStarted = true;      
-    }
-
     public async void Draw()
     {
         DrawRequest drawRequest = new DrawRequest { PlayerId = playerId };
@@ -111,6 +83,17 @@ public class Client : MonoBehaviour
         {
             OnTimeoutEnded.Invoke(); 
         }
+    }
+
+    public async UniTask TimeoutCheck(CancellationToken token)
+    {
+        await UniTask.Delay(gameConfig.ClientTimeoutDuration);
+
+        token.ThrowIfCancellationRequested();
+
+        OnTimeoutStarted.Invoke();
+
+        timeoutStarted = true;      
     }
 
     public void ReceiveGameState(GameState state)

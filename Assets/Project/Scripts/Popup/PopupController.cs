@@ -1,12 +1,10 @@
-using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class PopupController : MonoBehaviour
 {
-    [SerializeField] Client client;
-    [SerializeField] List<Popup> popups = new List<Popup>();
+    [SerializeField] private Client client;
+    [SerializeField] private List<Popup> popups = new List<Popup>();
 
     private void Start()
     {
@@ -22,6 +20,7 @@ public class PopupController : MonoBehaviour
     {
         popups.ForEach(p => p.Hide());
     }
+
     private void Show(PopupType type)
     {
         if (type == PopupType.Undefined)
@@ -72,7 +71,6 @@ public class PopupController : MonoBehaviour
     {
         Hide(PopupType.Timeout);
     }
-
 
     private void OnDestroy()
     {
