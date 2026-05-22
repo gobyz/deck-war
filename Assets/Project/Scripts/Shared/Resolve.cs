@@ -5,6 +5,6 @@ public class Resolve : MonoBehaviour
 {
     public int WinnerId;
     public int WonPileCardsCount;
-    public bool IsATie;
+    public Outcome Outcome;
     public List<DeckData> DeckDatas = new List<DeckData>();
 }

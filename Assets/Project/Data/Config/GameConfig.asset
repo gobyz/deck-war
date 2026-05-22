@@ -12,6 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 362dd5e98b7fbc4468c1a99eb3390194, type: 3}
   m_Name: GameConfig
   m_EditorClassIdentifier: Assembly-CSharp::GameConfig
+  JoinErrorChance: 0
+  ServerFullChance: 0
+  DrawErrorChance: 0
+  JoinTimeoutChance: 0
+  DrawTimeoutChance: 0
+  ServerTimeoutDuration: 8000
+  ClientTimeoutDuration: 4000
   ClientIdPlayer: 35221
   ClientIdEnemy: 46523
   CardTheme: {fileID: 11400000, guid: 0388dcc664398004abd742d257e0b26c, type: 2}

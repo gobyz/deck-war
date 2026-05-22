@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class AudioController : MonoBehaviour
 {
-    [SerializeField] Client client;
+    [SerializeField] private Client client;
     [SerializeField] private AudioSource musicAudioSource;
     [SerializeField] private AudioSource sfxAudioSource;
     [SerializeField] private AudioClip music;

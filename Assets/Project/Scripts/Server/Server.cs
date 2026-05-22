@@ -16,8 +16,8 @@ public class Server
     private List<CardData> winPile = new List<CardData>();
     private bool isWar = false; // flag to indicate if the round is a war, used to determine how many cards to draw in the next round
     private int cardsToDraw = 1; // number of cards to draw in the next round
-    private Outcome gameOutcome;
     private bool isGameOver = false;
+    private Outcome gameOutcome; 
     private CancellationTokenSource cts = new();
 
     public Server(Client client)
@@ -45,19 +45,6 @@ public class Server
         await RunGameplayPhase(token);
 
         await RunGameOverPhase(token);
-    }
-
-    private async UniTask GameOver()
-    {
-        SetGameState(GameState.GameOver);
-
-        SendGameOver();
-
-        Debug.Log($"Game over. Game Outcome: {gameOutcome.ToString()}");
-
-        await UniTask.Delay(3000);
-
-        StartServerLoop(); // restart server loop 
     }
 
     private async UniTask RunLobbyPhase(CancellationToken token)
@@ -102,14 +89,6 @@ public class Server
             await RunRound(token);
         }
     }
-
-    private async UniTask RunGameOverPhase(CancellationToken token)
-    {
-        SetGameState(GameState.GameOver);
-
-        await GameOver();
-    }
-
     private async UniTask RunRound(CancellationToken token)
     {
         Debug.Log("Starting new round...");
@@ -120,7 +99,7 @@ public class Server
         {
             await RunResolvePhase(token); 
 
-            EvaluateGameOver();
+            isGameOver = EvaluateGameOver();
         }    
     }
 
@@ -150,11 +129,31 @@ public class Server
         Debug.Log("Round resolved.");
     }
 
-    private void EvaluateGameOver()
+    private async UniTask RunGameOverPhase(CancellationToken token)
+    {
+        SetGameState(GameState.GameOver);
+
+        await GameOver();
+    }
+
+    private async UniTask GameOver()
+    {
+        SetGameState(GameState.GameOver);
+
+        SendGameOver();
+
+        Debug.Log($"Game over. Game Outcome: {gameOutcome.ToString()}");
+
+        await UniTask.Delay(3000);
+
+        StartServerLoop(); // restart server loop 
+    }
+
+    private bool EvaluateGameOver()
     {
         if (players.All(p => p.CanDraw()))
         {
-            return;
+            return false;
         }
 
         if (players.All(p => !p.CanDraw()))
@@ -168,7 +167,7 @@ public class Server
             gameOutcome = GetWinnerGameOutcome(winner.PlayerID);
         }
 
-        isGameOver = true;
+        return true;
     }
 
     private void ServerClear()
@@ -189,6 +188,30 @@ public class Server
     public async UniTask<JoinResponse> Join(JoinRequest joinRequest, int delay = 500)
     {
         await UniTask.Delay(delay); // simulate server latency
+        
+        //emulate server errors
+        if(joinRequest.ClientId == gameConfig.ClientIdPlayer)
+        {
+            if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.JoinTimeoutChance)
+            {
+                await UniTask.Delay(gameConfig.ServerTimeoutDuration);
+            }
+
+            if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.JoinErrorChance)
+            {
+                return new JoinResponse
+                {
+                    Status = JoinResponseStatus.Error
+                };
+            }   
+            else if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.ServerFullChance)
+            {
+                return new JoinResponse
+                {
+                    Status = JoinResponseStatus.ServerFull
+                };
+            }   
+        }
 
         if(players.Count < gameConfig.MaxPlayers)
         {
@@ -227,14 +250,6 @@ public class Server
         }
     }
 
-    private async UniTask Draw()
-    {
-        while (!isGameOver && !players.All(p => p.DrawnCardsCount == cardsToDraw))
-        {
-            await UniTask.Yield();
-        }
-    }
-
     private void InitializePlayerDecks()
     {
         Deck deck = new Deck(gameConfig.FullDeck);
@@ -251,31 +266,43 @@ public class Server
         }
     }
 
-    public async UniTaskVoid RequestDraw(DrawRequest drawRequest)
+    private async UniTask Draw()
+    {
+        while (!isGameOver && !players.All(p => p.DrawnCardsCount == cardsToDraw))
+        {
+            await UniTask.Yield();
+        }
+    }
+   
+    public async UniTask RequestDraw(DrawRequest drawRequest)
     {
         await UniTask.Delay(500);
+
+        if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.DrawTimeoutChance)
+        {
+            await UniTask.Delay(gameConfig.ServerTimeoutDuration);
+        }
+
+        //emulate server errors
+        if(UnityEngine.Random.Range(0f, 100f) <= gameConfig.DrawErrorChance)
+        {
+            DrawResponse drawResponse = new DrawResponse
+            {
+                Status = DrawResponseStatus.Error
+            };
+
+            client.ReceiveDrawn(drawResponse);
+
+            return;
+        }  
+
+        bool isGameOverEvaluation = EvaluateGameOver();
 
         DrawResponse enemyDrawResponse = DrawCard(new DrawRequest { PlayerId = 0 });
 
         DrawResponse playerDrawResponse = DrawCard(drawRequest); 
 
-        if(enemyDrawResponse.Status == DrawResponseStatus.NoCardsLeft || playerDrawResponse.Status == DrawResponseStatus.NoCardsLeft)
-        {
-            if(enemyDrawResponse.Status == DrawResponseStatus.NoCardsLeft && playerDrawResponse.Status == DrawResponseStatus.NoCardsLeft)
-            {
-                gameOutcome = Outcome.Tie;
-            }
-            else if(enemyDrawResponse.Status == DrawResponseStatus.NoCardsLeft)
-            {
-                gameOutcome = Outcome.PlayerWin;
-            }
-            else
-            {
-                gameOutcome = Outcome.EnemyWin;
-            }
-
-            isGameOver = true;
-        }
+        isGameOver = isGameOverEvaluation;
 
         client.ReceiveDrawn(enemyDrawResponse); 
 
@@ -286,16 +313,20 @@ public class Server
     {
         if(gameState != GameState.Drawing)
         {
+            Debug.LogError($"Game is not in drawing phase. This should not happen. Game state: {gameState}");
+
             return new DrawResponse
             {
                 Status = DrawResponseStatus.Error
             };
         }
 
-        Player player = GetPlayer(drawRequest.PlayerId);
+        Player player = GetPlayer(drawRequest.PlayerId);   
 
         if(player.DrawnCardsCount >= cardsToDraw)
         {
+            Debug.Log($"Player {player.PlayerID} has already drawn {cardsToDraw} cards.");
+
             return new DrawResponse
             {
                 Status = DrawResponseStatus.AlreadyDrawn
@@ -354,10 +385,10 @@ public class Server
     {
         await UniTask.Delay(500); // simulate server latency
 
-        Player player1 = players[0]; //enemy
-        Player player2 = players[1]; //player
+        Player enemy = players[0];
+        Player player = players[1];
 
-        Outcome roundOutcome = GetResult(player1.DrawnCards.Last(), player2.DrawnCards.Last());
+        Outcome roundOutcome = GetResult(enemy.DrawnCards.Last(), player.DrawnCards.Last());
 
         if(roundOutcome == Outcome.Undefined)
         {
@@ -366,41 +397,33 @@ public class Server
             return null;
         }
 
-        if(roundOutcome != Outcome.Tie)
+        isWar = roundOutcome == Outcome.Tie;
+
+        Player winnerPlayer = roundOutcome == Outcome.EnemyWin ? enemy : player;
+
+        Resolve resolve = new Resolve
         {
-            isWar = false; 
+            WinnerId = winnerPlayer.PlayerID,
+            WonPileCardsCount = winPile.Count,
+            DeckDatas = GetDeckDatas(),
+            Outcome = roundOutcome
+        };
 
-            int winner = roundOutcome == Outcome.EnemyWin ? 0 : 1; // determine winner based on result
-
-            Player winnerPlayer = players[winner]; 
-
+        if(!isWar)
+        {
             winPile.ForEach(card => winnerPlayer.WarDeck.AddCard(card)); // winner takes all cards in the win pile
 
             winPile.Clear(); // clear win pile for next round
 
-            players.ForEach(p => p.DrawnCards.Clear()); // clear drawn cards for all players
-
-            return new Resolve
-            {
-                WinnerId = players[winner].PlayerID,
-                WonPileCardsCount = winPile.Count,
-                DeckDatas = GetDeckDatas(),
-                IsATie = false,       
-            };
+            ClearDrawnCards(); // clear drawn cards for all players
         }
-        else
-        {
-            isWar = true; 
 
-            players.ForEach(p => p.DrawnCards.Clear()); // clear drawn cards for all players
+        return resolve;
+    }
 
-            return new Resolve
-            {
-                WonPileCardsCount = winPile.Count,
-                DeckDatas = GetDeckDatas(),
-                IsATie = true
-            };
-        }        
+    private void ClearDrawnCards()
+    {
+        players.ForEach(p => p.DrawnCards.Clear()); 
     }
 
     private Player GetPlayer(int playerId)
@@ -446,23 +469,4 @@ public class Server
             return Outcome.EnemyWin;
         }
     }
-}
-
-public enum GameState
-    {
-        Undefined,
-        WaitingForPlayers,
-        Ready,
-        Shuffling,
-        Drawing,
-        Resolving,
-        GameOver
-    }
-
-public enum Outcome
-{
-    Undefined,
-    PlayerWin,
-    EnemyWin,
-    Tie
 }

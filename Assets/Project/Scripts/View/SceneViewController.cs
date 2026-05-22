@@ -27,19 +27,30 @@ public class SceneViewController : MonoBehaviour
 
         client.OnGameStateReceived.AddListener(OnGameState);
         client.OnDrawnReceived.AddListener(OnDrawn);
-        client.OnResolveReceived.AddListener(OnResolveReceived);
+        client.OnResolveReceived.AddListener(OnResolve);
     }
 
     private void OnGameState(GameState state)
     {
-        if(state == GameState.WaitingForPlayers)
+        switch (state)
         {
+            case GameState.WaitingForPlayers:
             RemoveActiveCards();
-        }
-        if(state == GameState.Drawing)
-        {
+            break;
+
+            case GameState.Drawing:
             ResetCardCounts();
+            break;
         }
+    }
+
+    private void RemoveActiveCards()
+    {
+        foreach (var cardView in activeCardViews)
+        {
+            Destroy(cardView.gameObject);
+        }
+        activeCardViews.Clear();
     }
     
     private void ResetCardCounts()
@@ -50,14 +61,17 @@ public class SceneViewController : MonoBehaviour
 
     private void OnDrawn(DrawResponse drawResponse)
     {
-        if (Client.Instance.IsLocalPlayer(drawResponse.PlayerId))
+        if(drawResponse.Status == DrawResponseStatus.Success)
         {
-            DrawCard(drawResponse, false);
-        }
-        else
-        {
-            DrawCard(drawResponse, true);
-        }
+            if (Client.Instance.IsLocalPlayer(drawResponse.PlayerId))
+            {
+                DrawCard(drawResponse, false);
+            }
+            else
+            {
+                DrawCard(drawResponse, true);
+            } 
+        }      
     }
 
     private void DrawCard(DrawResponse drawResponse, bool isEnemy)
@@ -91,11 +105,11 @@ public class SceneViewController : MonoBehaviour
         cardView.transform.DOLocalMove(endAnchor.localPosition, gameConfig.DrawAnimationDuration).SetEase(gameConfig.DrawAnimationEase);
     }
 
-       private void OnResolveReceived(Resolve resolve)
+       private void OnResolve(Resolve resolve)
     {
         Transform targetAnchor;
 
-        if (resolve.IsATie)
+        if (resolve.Outcome == Outcome.Tie)
         {
             targetAnchor = tieDeckAnchor;
         }
@@ -117,20 +131,11 @@ public class SceneViewController : MonoBehaviour
             cardView.transform.DOLocalMove(targetAnchor.localPosition, gameConfig.HideAnimationDuration).SetEase(gameConfig.HideAnimationEase).onComplete = () => RemoveActiveCards();
         }
     }
-    
-    private void RemoveActiveCards()
-    {
-        foreach (var cardView in activeCardViews)
-        {
-            Destroy(cardView.gameObject);
-        }
-        activeCardViews.Clear();
-    }
 
     private void OnDestroy()
     {
         client.OnGameStateReceived.RemoveListener(OnGameState);
         client.OnDrawnReceived.RemoveListener(OnDrawn);
-        client.OnResolveReceived.RemoveListener(OnResolveReceived);   
+        client.OnResolveReceived.RemoveListener(OnResolve);   
     }
 }

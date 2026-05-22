@@ -36,6 +36,7 @@ public class UIViewController : MonoBehaviour
         gameConfig = GameConfigProvider.Instance.GameConfig;
 
         client.OnGameStateReceived.AddListener(OnGameState);
+        client.OnJoinReceived.AddListener(OnJoin);
         client.OnDrawnReceived.AddListener(OnDrawn);
         client.OnResolveReceived.AddListener(OnResolve);
         client.OnGameOverReceived.AddListener(OnGameOver);
@@ -93,20 +94,38 @@ public class UIViewController : MonoBehaviour
         tieDeckCountText.text = "0";
     }
 
+    private void OnJoin(JoinResponse joinResponse)
+    {
+        if(joinResponse.Status == JoinResponseStatus.Error ||joinResponse.Status == JoinResponseStatus.ServerFull)
+        {
+            SetJoinButton(true);
+        }
+    }
+
     private void OnDrawn(DrawResponse drawResponse)
     {
-        if (client.IsLocalPlayer(drawResponse.PlayerId))
+        switch (drawResponse.Status)
         {
-            playerDeckCountText.text = drawResponse.DeckInfo.DeckCardsLeft.ToString();
-            playerWarDeckCountText.text = drawResponse.DeckInfo.WarDeckCardsLeft.ToString();
+            case DrawResponseStatus.Error:
+                SetDrawButton(true);
+                break;
 
-            drawButton.interactable = true;
+            case DrawResponseStatus.Success:
+                if (client.IsLocalPlayer(drawResponse.PlayerId))
+                {
+                    playerDeckCountText.text = drawResponse.DeckInfo.DeckCardsLeft.ToString();
+                    playerWarDeckCountText.text = drawResponse.DeckInfo.WarDeckCardsLeft.ToString();
+
+                    drawButton.interactable = true;
+                }
+                else
+                {
+                    enemyDeckCountText.text = drawResponse.DeckInfo.DeckCardsLeft.ToString();
+                    enemyWarDeckCountText.text = drawResponse.DeckInfo.WarDeckCardsLeft.ToString();
+                }
+
+                break;
         }
-        else
-        {
-            enemyDeckCountText.text = drawResponse.DeckInfo.DeckCardsLeft.ToString();
-            enemyWarDeckCountText.text =drawResponse.DeckInfo.WarDeckCardsLeft.ToString();
-        } 
     }
 
     private void OnResolve(Resolve resolveResponse)
@@ -125,7 +144,7 @@ public class UIViewController : MonoBehaviour
             }
         }
 
-        if(resolveResponse.IsATie)
+        if(resolveResponse.Outcome == Outcome.Tie)
         {
             tieDeck.SetActive(true);
             tieDeckCountText.text = resolveResponse.WonPileCardsCount.ToString();
